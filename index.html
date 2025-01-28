@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            display: flex;            
+            background-color: #000; /* Black background */
+            color: #fff; /* White text color */          
+        }
+        #left-panel {            
+            width: 300px;
+            padding: 10px;
+            border-right: 1px solid #444; /* Darker border */
+            background-color: #333; /* Dark gray background for side panel */
+            box-sizing: border-box;
+        }
+        #player {
+            flex-grow: 1;
+            position: relative; /* Position relative for overlay */          
+        }
+        #youtube-player {
+            width: 100%;
+            height: 100vh; /* Full height */
+        }
+        #overlay {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 30%; /* Cover bottom */
+            background-color: rgba(0, 0, 0, 0.8); /* Semi-transparent black */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 2em;
+            display: none; /* Initially hidden */
+            text-align: center;
+            padding: 10px;
+        }
+        #overlay h1 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+            color: #00ff7f; /* Light green for branding */
+        }
+        #overlay h2 {
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+        #overlay p {
+            font-size: 1em;
+            color: #ffcc00; /* Yellow for the countdown */
+        }
+        #movie-list {
+            margin-top: 8px;
+        }
+        #movie-list h3 {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        #kidsbtn, #adultsbtn {
+            margin-right: 6%;
+            padding: 10px;
+        }
+        input, button {
+            margin-top: 10px;
+            padding: 5px;
+            border: none;
+            border-radius: 5px;
+        }
+        input {
+            background-color: #555; /* Darker input background */
+            color: #fff; /* White text color */
+        }
+        #url-input {
+            width: 80%;
+        }
+        button {
+            background-color: #777; /* Darker button background */
+            color: #fff; /* White text color */
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #999; /* Lighter button background on hover */
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        .input-group input {
+            flex-grow: 1;
+        }
+        .inactive {
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="left-panel">
+        <h2>Add YouTube Movie</h2>
+        <button id="kidsbtn" onclick="loadKidsCinema()">Kids Cinema</button>
+        <button id="adultsbtn" onclick="loadAdultsCinema()">Adults Cinema</button>
+        <input type="text" id="url-input" placeholder="Enter YouTube video URL">
+        <div class="input-group">
+            <input type="text" id="name-input" placeholder="Enter Movie Name">
+            <button onclick="addMovie()">Add Movie</button>
+        </div>
+        <div id="movie-list">
+            <h3>Movie List</h3>
+            <ul id="list"></ul>
+        </div>       
+    </div>
+    <div id="player">
+        <div id="youtube-player"></div>
+        <div id="overlay">
+            <h1>Viloria Software</h1>
+            <h2 id="cinema-type"></h2>
+            <p id="countdown-timer"></p>
+        </div>
+    </div>
+
+    <script src="https://www.youtube.com/iframe_api"></script>    
+    <script>
+        let player;
+        let movieQueue = [];
+        let currentIndex = 0; // Index of the current movie
+        let overlayTimeout = null; // To manage the overlay timer
+        let countdownInterval = null; // To update the countdown timer
+        let cinemaType = "Adults Cinema"; // Default cinema type
+        let kidsQueue = JSON.parse(localStorage.getItem('kidsQueue')) || [];
+        let adultsQueue = JSON.parse(localStorage.getItem('adultsQueue')) || [];
+
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('youtube-player', {
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange,
+                    'onError': onPlayerError
+                }
+            });
+        }
+
+        function onPlayerReady(event) {
+            if (movieQueue.length > 0) {
+                player.loadVideoById(movieQueue[currentIndex].videoId);
+            }
+        }
+
+        function onPlayerStateChange(event) {
+            const overlay = document.getElementById('overlay');
+            const countdownElement = document.getElementById('countdown-timer');
+            const cinemaTypeElement = document.getElementById('cinema-type');
+            cinemaTypeElement.textContent = cinemaType; // Update the cinema type in the overlay
+
+            if (event.data === YT.PlayerState.PLAYING) {
+                const duration = player.getDuration();
+                const remainingTime = duration - player.getCurrentTime();
+
+                // Clear any previous overlay or countdown timers
+                clearTimeout(overlayTimeout);
+                clearInterval(countdownInterval);
+
+                // Set a new timer to display the overlay 20 seconds before the movie ends
+                if (remainingTime > 20) {
+                    overlayTimeout = setTimeout(() => {
+                        overlay.style.display = 'flex';
+                        startCountdown(20); // Start countdown from 20 seconds
+                    }, (remainingTime - 20) * 1000);
+                }
+            }
+
+            if (event.data === YT.PlayerState.PAUSED) {
+                overlay.style.display = 'flex';
+                clearTimeout(overlayTimeout);
+                clearInterval(countdownInterval);
+                countdownElement.textContent = "Paused...";
+            } else if (event.data === YT.PlayerState.ENDED) {
+                overlay.style.display = 'flex';
+                countdownElement.textContent = "Starting next movie...";
+                playNextMovie();
+            } else {
+                overlay.style.display = 'none';
+                clearInterval(countdownInterval);
+            }
+        }
+
+        function onPlayerError(event) {
+            playNextMovie();
+        }
+
+        function playNextMovie() {
+            currentIndex = (currentIndex + 1) % movieQueue.length; // Move to the next movie, loop back if at the end
+            player.loadVideoById(movieQueue[currentIndex].videoId);
+        }
+
+        function startCountdown(seconds) {
+            const countdownElement = document.getElementById('countdown-timer');
+            let remainingTime = seconds;
+
+            // Update the countdown every second
+            countdownInterval = setInterval(() => {
+                countdownElement.textContent = `Next movie starts in ${remainingTime} seconds...`;
+                remainingTime--;
+
+                // Stop the countdown when it reaches zero
+                if (remainingTime < 0) {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+        }
+
+        function addMovie() {
+            const urlInput = document.getElementById('url-input').value;
+            const nameInput = document.getElementById('name-input').value;
+            const videoId = getYouTubeVideoId(urlInput);
+            if (videoId && !movieQueue.some(movie => movie.videoId === videoId)) {
+                movieQueue.push({ videoId, name: nameInput });
+                if (movieQueue.length === 1) {
+                    player.loadVideoById(videoId);
+                }
+                saveCurrentQueue();
+                updateMovieList();
+                document.getElementById('url-input').value = '';
+                document.getElementById('name-input').value = '';
+            }
+        }
+
+        function getYouTubeVideoId(url) {
+            try {
+                const urlObj = new URL(url);
+                return urlObj.searchParams.get('v');
+            } catch {
+                return null;
+            }
+        }
+
+        function updateMovieList() {
+            const list = document.getElementById('list');
+            list.innerHTML = '';
+            movieQueue.forEach((movie, index) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `Movie ${index + 1}: ${movie.name || movie.videoId}`;
+                list.appendChild(listItem);
+            });
+        }
+
+        function saveCurrentQueue() {
+            const currentQueue = movieQueue;
+            const storageKey = cinemaType === "Kids Cinema" ? 'kidsQueue' : 'adultsQueue';
+            localStorage.setItem(storageKey, JSON.stringify(currentQueue));
+        }
+
+        function loadKidsCinema() {
+            cinemaType = "Kids Cinema"; // Update cinema type
+            loadCinemaQueue(kidsQueue, 'loadKidsCinema');
+        }
+
+        function loadAdultsCinema() {
+            cinemaType = "Adults Cinema"; // Update cinema type
+            loadCinemaQueue(adultsQueue, 'loadAdultsCinema');
+        }
+
+        function loadCinemaQueue(queue, activeButton) {
+            movieQueue = queue;
+            currentIndex = 0; // Reset to the first movie
+            updateMovieList();
+            if (movieQueue.length > 0) {
+                player.loadVideoById(movieQueue[currentIndex].videoId);
+                player.playVideo();
+            }
+            document.querySelectorAll('button').forEach(button => button.classList.add('inactive'));
+            document.querySelector(`button[onclick="${activeButton}()"]`).classList.remove('inactive');
+        }
+
+        window.onload = () => {
+            updateMovieList();
+            if (movieQueue.length > 0) {
+                player.loadVideoById(movieQueue[currentIndex].videoId);
+            }
+        };
+    </script>
+</body>
+</html>
