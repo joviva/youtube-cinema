@@ -328,7 +328,14 @@
           if (index === currentIndex) {
             listItem.classList.add("current-movie");
           }
-
+      
+          // Play video on click and continue with playlist
+          listItem.onclick = function () {
+            setCurrentIndex(index);
+            player.loadVideoById(movieQueue[currentIndex].videoId);
+            player.playVideo();
+          };
+      
           // Create movie info span
           const movieInfo = document.createElement("span");
           movieInfo.className = "movie-info";
@@ -336,7 +343,7 @@
             movie.name || movie.videoId
           }`;
           listItem.appendChild(movieInfo);
-
+      
           // Create delete button
           const deleteButton = document.createElement("button");
           deleteButton.className = "delete-btn";
@@ -346,7 +353,7 @@
             deleteMovie(index);
           };
           listItem.appendChild(deleteButton);
-
+      
           list.appendChild(listItem);
         });
       }
