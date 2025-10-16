@@ -181,11 +181,36 @@
       let player;
       let movieQueue = [];
       let currentIndex = 0; // Index of the current movie
+      function log(msg) { console.log("[DEBUG]", msg); }
+      
+      // Restore currentIndex per cinema type BEFORE player initialization
+      /* Remove duplicate variable declarations */
+      const key = (cinemaType === "Kids Cinema" ? "kidsCurrentIndex" : "adultsCurrentIndex");
+      const savedIndex = parseInt(localStorage.getItem(key), 10);
+      if (!isNaN(savedIndex)) {
+        currentIndex = savedIndex;
+        log("Early restore: currentIndex from localStorage: " + currentIndex);
+      }
+      
+      function setCurrentIndex(idx) {
+        log("setCurrentIndex: " + idx);
+        currentIndex = idx;
+        // Persist currentIndex per cinema type
+        const key = (cinemaType === "Kids Cinema" ? "kidsCurrentIndex" : "adultsCurrentIndex");
+        localStorage.setItem(key, currentIndex);
+      
+        // If last video in queue is restarted, remove index from localStorage
+        if (movieQueue.length > 0 && currentIndex === movieQueue.length - 1) {
+          log("Deleting last played index from localStorage for key: " + key);
+          localStorage.removeItem(key);
+        }
+      }
       let overlayTimeout = null; // To manage the overlay timer
       let countdownInterval = null; // To update the countdown timer
-      let cinemaType = "Adults Cinema"; // Default cinema type
-      let kidsQueue = JSON.parse(localStorage.getItem("kidsQueue")) || [];
-      let adultsQueue = JSON.parse(localStorage.getItem("adultsQueue")) || [];
+      var cinemaType = "Adults Cinema"; // Default cinema type
+      var kidsQueue = JSON.parse(localStorage.getItem("kidsQueue")) || [];
+      var adultsQueue = JSON.parse(localStorage.getItem("adultsQueue")) || [];
+      /* Removed early restore logic. Restoration now happens after movieQueue is loaded. */
 
       function onYouTubeIframeAPIReady() {
         player = new YT.Player("youtube-player", {
@@ -199,6 +224,7 @@
 
       function onPlayerReady(event) {
         if (movieQueue.length > 0) {
+          log("onPlayerReady: loading video at index " + currentIndex);
           player.loadVideoById(movieQueue[currentIndex].videoId);
         }
       }
@@ -385,9 +411,19 @@
 
       function loadCinemaQueue(queue, activeButton) {
         movieQueue = queue;
-        currentIndex = 0; // Reset to the first movie
+        // Restore currentIndex per cinema type
+        const key = (cinemaType === "Kids Cinema" ? "kidsCurrentIndex" : "adultsCurrentIndex");
+        const savedIndex = parseInt(localStorage.getItem(key), 10);
+        if (!isNaN(savedIndex) && savedIndex < movieQueue.length) {
+          setCurrentIndex(savedIndex);
+          log("loadCinemaQueue: restored currentIndex from localStorage: " + currentIndex);
+        } else {
+          setCurrentIndex(0); // Reset to the first movie
+          log("loadCinemaQueue: set currentIndex to 0");
+        }
         updateMovieList();
         if (movieQueue.length > 0) {
+          log("loadCinemaQueue: loading video at index " + currentIndex);
           player.loadVideoById(movieQueue[currentIndex].videoId);
           player.playVideo();
         }
@@ -400,8 +436,26 @@
       }
 
       window.onload = () => {
+        // Restore movieQueue
+        kidsQueue = JSON.parse(localStorage.getItem("kidsQueue")) || [];
+        adultsQueue = JSON.parse(localStorage.getItem("adultsQueue")) || [];
+        movieQueue = (cinemaType === "Kids Cinema") ? kidsQueue : adultsQueue;
+      
+        // Restore currentIndex per cinema type
+        const key = (cinemaType === "Kids Cinema" ? "kidsCurrentIndex" : "adultsCurrentIndex");
+        const savedIndex = parseInt(localStorage.getItem(key), 10);
+        if (!isNaN(savedIndex) && savedIndex < movieQueue.length) {
+          currentIndex = savedIndex;
+          log("window.onload: restored currentIndex from localStorage: " + currentIndex);
+        } else {
+          currentIndex = 0;
+          log("window.onload: set currentIndex to 0");
+        }
+      
         updateMovieList();
+        log("window.onload: currentIndex = " + currentIndex);
         if (movieQueue.length > 0) {
+          log("window.onload: loading video at index " + currentIndex);
           player.loadVideoById(movieQueue[currentIndex].videoId);
         }
       };
